@@ -1,13 +1,16 @@
 import os,argparse
 import numpy as np
 from PIL import Image
-from models import *
+from net.models import *
 import torch
 import torch.nn as nn
 import torchvision.transforms as tfs 
 import torchvision.utils as vutils
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
+from net.models.FFA import FFA
+import glob
+
 abs=os.getcwd()+'/'
 def tensorShow(tensors,titles=['haze']):
         fig=plt.figure()
@@ -26,7 +29,11 @@ opt=parser.parse_args()
 dataset=opt.task
 gps=3
 blocks=19
-img_dir=abs+opt.test_imgs+'/'
+#img_dir=abs+opt.test_imgs+'/'
+#img_dir = "E:/Hazy Dataset Benchmark/O-HAZE/hazy/"
+img_dir = "E:/Hazy Dataset Benchmark/RESIDE-Unannotated/"
+hazy_list = glob.glob(img_dir + "*.jpeg")
+
 output_dir=abs+f'pred_FFA_{dataset}/'
 print("pred_dir:",output_dir)
 if not os.path.exists(output_dir):
@@ -38,16 +45,23 @@ net=FFA(gps=gps,blocks=blocks)
 net=nn.DataParallel(net)
 net.load_state_dict(ckp['model'])
 net.eval()
-for im in os.listdir(img_dir):
+for im in hazy_list:
+    img_name = im.split("\\")[1]
     print(f'\r {im}',end='',flush=True)
-    haze = Image.open(img_dir+im)
+    haze = Image.open(im)
+    #resize images
+    width, height = haze.size
+    #haze = haze.resize((int(width / 2), int(height / 2)), Image.BILINEAR)
+    haze = haze.resize((512, 512), Image.BILINEAR)
+
     haze1= tfs.Compose([
         tfs.ToTensor(),
-        tfs.Normalize(mean=[0.64, 0.6, 0.58],std=[0.14,0.15, 0.152])
+        tfs.Normalize(mean=[0.64, 0.6, 0.58],std=[0.14,0.15, 0.152]) #normalize with the dataset mean?
     ])(haze)[None,::]
     haze_no=tfs.ToTensor()(haze)[None,::]
     with torch.no_grad():
         pred = net(haze1)
     ts=torch.squeeze(pred.clamp(0,1).cpu())
     tensorShow([haze_no,pred.clamp(0,1).cpu()],['haze','pred'])
-    vutils.save_image(ts,output_dir+im.split('.')[0]+'_FFA.png')
+
+    vutils.save_image(ts,output_dir+img_name+'_FFA.jpg')
